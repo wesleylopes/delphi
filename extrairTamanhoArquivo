@@ -1,0 +1,17 @@
+function extrairTamanhoArquivo(arquivo:string):String;
+var
+  info: TWin32FileAttributeData;
+begin
+  try
+    result := floatToStr(-1);
+    
+    if not getFileAttributesEx(Pchar(Arquivo), GetFileExinfoStandard, @info) then
+      Exit;
+    
+    Result := floatToStr(Int64(info.nFileSizeLow) or Int64(info.nfileSizeHigh shl 32));
+    
+  Except
+    on E: Exception do 
+      Result := 'Erro Leitura Arquivo';
+  end;
+end;
