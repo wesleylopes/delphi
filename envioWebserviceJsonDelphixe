@@ -1,0 +1,92 @@
+var
+  Json:String;
+  sResponse: string;
+  Resp_Json: string;
+  Req_Json:TStream;
+  tt: TStringList;
+  token:string;
+  
+  Json := ' [	';
+  
+   begin
+    DMPro_Plataforma_PagFor.cdsBordero.First;
+    while not DMPro_Plataforma_PagFor.cdsBordero.Eof do
+    begin
+      Json := Json + ' {	';
+      Json := Json + '"GSB_DTA_CREDITO":' +#34 + FieldByName('GSB_DTA_CREDITO').AsString + #34 + ' , ';
+      Json := Json + '"GSB_BANCO":' +#34 + FieldByName('GSB_BANCO').AsString + #34 + ' , ';
+      Json := Json + '"GSB_FORMA_PAGAMENTO":' +#34 + FieldByName('GSB_FORMA_PAGAMENTO').AsString + #34 + ' , ';
+      Json := Json + '"GSB_VALOR_TOTAL":' + stringReplace(FieldByName('GSB_VALOR_TOTAL').AsString,',','.',[rfReplaceAll]) + ' , ';
+      Json := Json + '"GSB_NR_DOCUMENTO":'+ #34 + FieldByName('GSB_NR_DOCUMENTO').AsString + #34 + ' , ';
+      Json := Json + '"GSB_OBSERVACOES":' + #34 + FieldByName('GSB_OBSERVACOES').AsString + #34 + ' , ';
+      Json := Json + '"GSB_DTA_CADASTRO":' + #34 + FieldByName('GSB_DTA_CADASTRO').AsString + #34 + ' , ';
+      Json := Json + '"DOCUMENTOS": [';
+    buscaBorderoItens('2', FieldByName('BORD_NR_LANC').AsString);
+
+      DMPro_Plataforma_PagFor.CdsExporta.First;
+
+      while not DMPro_Plataforma_PagFor.CdsExporta.Eof do
+      begin
+        json := json + '{ ';
+        Json := Json + '"GSP_FORNECEDOR":' + #34 + TrocaCaracterEspecial(copy(DMPro_Plataforma_PagFor.CdsExporta.FieldByName('GSP_FORNECEDOR').AsString,1,50),false) + #34 + ', ';
+        Json := Json + '"GSP_DOCUMENTO":' + #34 + copy(DMPro_Plataforma_PagFor.CdsExporta.FieldByName('GSP_DOCUMENTO').AsString,1,50) + #34 + ', ';
+        Json := Json + '"GSP_VALOR":' + stringReplace(DMPro_Plataforma_PagFor.CdsExporta.FieldByName('GSP_VALOR').AsString ,',','.',[rfReplaceAll]) + ' , ';
+        Json := Json + '"GSP_VALOR_PAGAMENTO":' + stringReplace(DMPro_Plataforma_PagFor.CdsExporta.FieldByName('GSP_VALOR_PAGAMENTO').AsString ,',','.',[rfReplaceAll]) + ' , ';
+        Json := Json + '"GSP_BANCO":' + #34 +  TrocaCaracterEspecial(copy(DMPro_Plataforma_PagFor.CdsExporta.FieldByName('GSP_BANCO').AsString,1,50),false)  + #34 + ', ';
+        Json := Json + '"GSP_TIPO_DOCUMENTO":' + #34 + copy(DMPro_Plataforma_PagFor.CdsExporta.FieldByName('GSP_TIPO_DOCUMENTO').AsString,1,50) + #34 + ', ';
+        Json := Json + '"GSP_TIPO_PAGAMENTO":' + #34 + copy(DMPro_Plataforma_PagFor.CdsExporta.FieldByName('GSP_TIPO_PAGAMENTO').AsString,1,50)  + #34 + ', ';
+        Json := Json + '"GSP_CENTRO_CUSTOS":' + #34 +  TrocaCaracterEspecial(copy(DMPro_Plataforma_PagFor.CdsExporta.FieldByName('GSP_CENTRO_CUSTOS').AsString,1,50),false) + #34 + ', ';
+        Json := Json + '"GSP_OBSERVACOES":' + #34 + copy(DMPro_Plataforma_PagFor.CdsExporta.FieldByName('GSP_OBSERVACOES').AsString,1,100) + #34 + ', ';
+        Json := Json + '"GSP_DTA_VENCIMENTO":' + #34 + DMPro_Plataforma_PagFor.CdsExporta.FieldByName('GSP_DTA_VENCIMENTO').AsString + #34 ;
+
+        DMPro_Plataforma_PagFor.CdsExporta.Next;
+
+        if DMPro_Plataforma_PagFor.CdsExporta.Eof then
+          json := json + '} '
+        else
+          json := json + '}, ';
+
+      end;
+
+      Json := Json + ']' ;
+
+      DMPro_Plataforma_PagFor.cdsBordero.Next;
+
+      if DMPro_Plataforma_PagFor.cdsBordero.Eof then
+        json := json + '} '
+      else
+        json := json + '}, ';
+
+    end;
+    
+     Json := Json +' ]';
+
+  tt.Text := Json;
+  tt.SaveToFile('c:\temp\json2.txt');
+
+  Req_Json:= TstringStream.Create(UTF8String(Json));
+  Req_Json.Position := 0 ;
+
+  frmCarregando.lblMensagem.Caption := 'Enviando Dados...';
+  Sleep(5000); { Aguarda um segundo}
+
+  try
+    IdHTTP1.Request.Clear;
+    IdHTTP1.Request.CustomHeaders.Clear;
+	  IdHTTP1.Request.CustomHeaders.Add('Authorization:Bearer '+ trim(token));
+	  idHTTP1.Request.CharSet := 'utf-8';
+	  idhttp1.Request.ContentType := 'application/json';
+
+	  Resp_Json := IdHTTP1.post( baseURL + 'v1/payments/', Req_Json);
+
+    uGeraSql.AtualizarAprovacaoBDs(trim(FPro_Plataforma_PagFor.edtFiltrosCodEmpresaPagadoraRemessa.Text), Resp_Json);
+
+    Messagebox(handle,pchar('Envio concluído') ,'Aprovação', MB_ICONINFORMATION);
+    cbStatusAprovacao.ItemIndex := 4;
+
+  except on e: Exception do
+	  //ShowMessage('Erro: ' + E.Message );
+
+  end;
+    
+    
