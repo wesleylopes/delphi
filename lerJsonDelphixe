@@ -1,0 +1,130 @@
+var
+  temp: TSQLQuery;
+  url, retorno, codigo, token :string;
+  LJsonObj  : TJSONObject;
+  StrJson   : TStringList;
+  vDados, vDocumentosBordero, vResult ,vResultSuccess: TJSONValue;
+  i: Integer;
+  j: Integer;
+  aprovado, datahoraAprovado, observacaoAprovado :string;
+
+begin
+while not dbGridAprovacaoWebBordero.DataSource.DataSet.Eof do
+  begin
+    try
+      IdHTTP1.Request.Clear;
+      IdHTTP1.Request.CustomHeaders.Clear;
+      IdHTTP1.Request.CustomHeaders.Add('Authorization:Bearer '+ trim(token));
+      idHTTP1.Request.CharSet := 'utf-8';
+      idhttp1.Request.ContentType := 'application/json';
+
+      retorno := IdHTTP1.get( baseURL + '/v1/payments?numero_documento='+dbGridAprovacaoWebBordero.DataSource.DataSet.FieldByName('GSB_NR_DOCUMENTO').AsString);
+      application.ProcessMessages;
+      StrJson := TStringList.Create;
+
+      StrJson.Clear;
+      StrJson.Add(retorno);
+      
+      LJsonObj:= TJSONObject.ParseJSONValue(TEncoding.ASCII.GetBytes(retorno),0) as TJSONObject;
+      vDados := LJsonObj.Get('data').JsonValue;
+
+      if TJSONArray(vDados).Size > 0 then
+      begin
+        for i:= 0 to TJSONArray(vDados).Size -1 do  // Navega Arquivo
+        begin
+          vDocumentosBordero := TJSONObject(TJSONArray(vDados).Get(i)).Get('DOCUMENTOS').JsonValue; //Array Documentos
+          vResult := TJSONObject(TJSONArray(vDados).Get(i)).Get('APROVACAO').JsonValue;
+
+          for j := 0 to TJSONArray(vDocumentosBordero).Size -1 do
+          begin
+            with temp, sql do
+            begin
+              temp.Close;
+              temp.sql.Clear;
+
+              aprovado := TJSONObject(vResult).Get('APROVADO').JsonValue.Value;
+              datahoraAprovado := TJSONObject(vResult).Get('DATA_HORA').JsonValue.Value;
+              observacaoAprovado := TJSONObject(vResult).Get('OBSERVACAO').JsonValue.Value;
+
+              Add('UPDATE BORDERO_CP C');
+              Add('SET C.BORD_DTA_CONSULTA_APROV_WEB = SYSDATE');
+              Add(',C.BORD_STATUS_WEB = ' + #39 + aprovado + #39);
+              Add(',C.BORD_OBSERVACAO_WEB = ' + #39 + observacaoAprovado + #39);
+
+              if aprovado = 'APROVADO' then
+              begin
+                Add(',C.BORD_DTA_APROV_WEB = TO_DATE(NVL( '+ #39 + datahoraAprovado + #39 +',NULL), ''DD/MM/YYYY HH24:MI:SS'')');
+                Add(',C.BORD_DTA_NEGADO_WEB = NULL');
+                Add(',C.BORD_APROVACAO = ''S''');
+
+              end
+              else
+              if aprovado = 'NAO APROVADO' then
+              begin
+                Add(',C.BORD_DTA_NEGADO_WEB = TO_DATE(NVL( '+ #39 + datahoraAprovado + #39 +',NULL), ''DD/MM/YYYY HH24:MI:SS'')');
+                Add(',C.BORD_DTA_APROV_WEB = NULL');
+
+              end
+              else
+              if aprovado = 'PENDENTE' then
+              begin
+                Add(',C.BORD_DTA_NEGADO_WEB = NULL');
+                Add(',C.BORD_DTA_APROV_WEB = NULL');
+
+              end;
+
+              Add('WHERE (C.BORD_EMP_ID, C.BORD_NR_LANC) IN');
+              Add('(SELECT M.BORD_BORD_EMP_ID, M.BORD_BORD_NR_LANC');
+              Add('FROM BORDERO_CP_M M');
+              Add('WHERE M.BORD_BORD_EMP_ID = ' + trim(FPro_Plataforma_PagFor.edtFiltrosCodEmpresaPagadoraRemessa.Text));
+              Add('AND M.BORD_DOCUM = ' + #39 + TJSONObject(TJSONArray(vDocumentosBordero).Get(j)).Get('GSP_DOCUMENTO').JsonValue.Value + #39 +')');
+
+              temp.sql.saveToFile('c:\temp\BORDERO_CP.txt');
+
+              temp.ExecSQL();
+
+              temp.sql.Clear;
+
+              Add('UPDATE BORDERO_CP_M M');
+              Add('SET M.BORD_DTA_CONSULTA_APROV_WEB = SYSDATE');
+              Add(',M.BORD_STATUS_WEB = ' + #39 + aprovado + #39);
+              Add(',M.BORD_OBSERVACAO_WEB = ' + #39 + observacaoAprovado + #39);
+
+              if aprovado = 'APROVADO' then
+              begin
+                Add(',M.BORD_DTA_APROV_WEB = TO_DATE(NVL( '+ #39 + datahoraAprovado + #39 +',NULL), ''DD/MM/YYYY HH24:MI:SS'')');
+                Add(',M.BORD_DTA_NEGADO_WEB = NULL ');
+                Add(',M.BORD_FLAG_APROVAR=''S''');
+
+              end
+              else
+              if aprovado = 'NAO APROVADO' then
+              begin
+                Add(',M.BORD_DTA_NEGADO_WEB = TO_DATE(NVL( '+ #39 + datahoraAprovado + #39 +',NULL), ''DD/MM/YYYY HH24:MI:SS'')');
+                Add(',M.BORD_DTA_APROV_WEB = NULL');
+                Add(',M.BORD_FLAG_APROVAR=''N''');
+
+              end
+              else
+              if aprovado = 'PENDENTE' then
+              begin
+              Add(',M.BORD_FLAG_APROVAR = NULL');
+
+                //Add(',M.BORD_STATUS_WEB = ''PENDENTE'' ');
+                Add(',M.BORD_DTA_NEGADO_WEB = NULL');
+                Add(',M.BORD_DTA_APROV_WEB = NULL');
+
+              end;
+
+              Add('WHERE M.BORD_DOCUM = ' + #39 + TJSONObject(TJSONArray(vDocumentosBordero).Get(j)).Get('GSP_DOCUMENTO').JsonValue.Value +#39);
+              Add('AND M.BORD_BORD_EMP_ID = ' +  trim(FPro_Plataforma_PagFor.edtFiltrosCodEmpresaPagadoraRemessa.Text));
+
+              temp.sql.saveToFile('c:\temp\documento.txt');
+              temp.ExecSQL();
+
+            end;
+          end;
+        end;
+      end
+  end;
+end;
